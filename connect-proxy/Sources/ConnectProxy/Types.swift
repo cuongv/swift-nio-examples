@@ -48,7 +48,7 @@ public struct HTTPRequest {
 
     public init(method: HTTPMethod = .GET,
                 target: String,
-                version: HTTPVersion = HTTPVersion(major: 2, minor: 0),
+                version: HTTPVersion = HTTPVersion(major: 1, minor: 1),
                 headers: [(String, String)],
                 body: [UInt8]?,
                 trailers: [(String, String)]?) {

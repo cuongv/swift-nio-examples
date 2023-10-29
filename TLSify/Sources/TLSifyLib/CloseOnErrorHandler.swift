@@ -15,16 +15,16 @@
 import NIOCore
 import Logging
 
-public final class CloseOnErrorHandler: ChannelInboundHandler, Sendable {
-    public typealias InboundIn = Never
+final class CloseOnErrorHandler: ChannelInboundHandler, Sendable {
+    typealias InboundIn = Never
 
     private let logger: Logger
 
-    public init(logger: Logger) {
+    init(logger: Logger) {
         self.logger = logger
     }
 
-    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
         self.logger.info("unhandled error \(error), closing \(context.channel)")
         context.close(promise: nil)
     }

@@ -24,62 +24,59 @@ var rootLogger = Logger(label: "TLSify")
 rootLogger.logLevel = .debug
 
 struct TLSifyCommand: ParsableCommand {
-    @Option(name: .shortAndLong, help: "The host to listen to.")
-    var listenHost: String = "localhost"
+  @Option(name: .shortAndLong, help: "The host to listen to.")
+  var listenHost: String = "localhost"
 
-    @Argument(help: "The port to listen to.")
-    var listenPort: Int
+  @Argument(help: "The port to listen to.")
+  var listenPort: Int = 8080
 
-    @Argument(help: "The host to connect to.")
-    var connectHost: String
+  @Argument(help: "The host to connect to.")
+  var connectHost: String = "httpbin.org"
 
-    @Argument(help: "The port to connect to.")
-    var connectPort: Int
+  @Argument(help: "The port to connect to.")
+  var connectPort: Int = 443
 
-    @Option(name: .long, help: "TLS certificate verfication: full (default)/no-hostname/none.")
-    var tlsCertificateValidation: String = "full"
+  @Option(name: .long, help: "TLS certificate verfication: full (default)/no-hostname/none.")
+  var tlsCertificateValidation: String = "full"
 
-    @Option(help: "The ALPN protocols to send.")
-    var alpn: [String] = []
+  @Option(help: "The ALPN protocols to send.")
+  var alpn: [String] = []
 
-    func run() throws {
-        var tlsConfig = TLSConfiguration.makeClientConfiguration()
-        switch self.tlsCertificateValidation {
-        case "none":
-            tlsConfig.certificateVerification = .none
-        case "no-hostname":
-            tlsConfig.certificateVerification = .noHostnameVerification
-        default:
-            tlsConfig.certificateVerification = .fullVerification
+  func run() throws {
+    var tlsConfig = TLSConfiguration.makeClientConfiguration()
+    switch self.tlsCertificateValidation {
+    case "none":
+      tlsConfig.certificateVerification = .none
+    case "no-hostname":
+      tlsConfig.certificateVerification = .noHostnameVerification
+    default:
+      tlsConfig.certificateVerification = .fullVerification
+    }
+    tlsConfig.applicationProtocols = self.alpn
+    let sslContext = try NIOSSLContext(configuration: tlsConfig)
+    MultiThreadedEventLoopGroup.withCurrentThreadAsEventLoop { el in
+      ServerBootstrap(group: el)
+        .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+        .childChannelInitializer { channel in
+          channel.pipeline.addHandler(TLSProxy(host: self.connectHost,
+                                               port: self.connectPort,
+                                               sslContext: sslContext,
+                                               logger: rootLogger))
         }
-        tlsConfig.applicationProtocols = self.alpn
-        let sslContext = try NIOSSLContext(configuration: tlsConfig)
-        MultiThreadedEventLoopGroup.withCurrentThreadAsEventLoop { el in
-            ServerBootstrap(group: el)
-                .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-                .childChannelInitializer { channel in
-                    channel.pipeline.addHandlers([
-                        TLSProxy(host: self.connectHost,
-                                 port: self.connectPort,
-                                 sslContext: sslContext,
-                                 logger: rootLogger),
-                        CloseOnErrorHandler(logger: rootLogger),
-                    ])
-                }
-                .bind(host: self.listenHost, port: self.listenPort)
-            .map { channel in
-                rootLogger.info("Listening on \(channel.localAddress!)")
+        .bind(host: self.listenHost, port: self.listenPort)
+        .map { channel in
+          rootLogger.info("Listening on \(channel.localAddress!)")
+        }
+        .whenFailure { error in
+          rootLogger.error("Couldn't bind to \(self.listenHost):\(self.listenPort): \(error)")
+          el.shutdownGracefully { error in
+            if let error = error {
+              preconditionFailure("EL shutdown failed: \(error)")
             }
-            .whenFailure { error in
-                rootLogger.error("Couldn't bind to \(self.listenHost):\(self.listenPort): \(error)")
-                el.shutdownGracefully { error in
-                    if let error = error {
-                        preconditionFailure("EL shutdown failed: \(error)")
-                    }
-                }
-            }
+          }
         }
     }
+  }
 }
 
 TLSifyCommand.main()

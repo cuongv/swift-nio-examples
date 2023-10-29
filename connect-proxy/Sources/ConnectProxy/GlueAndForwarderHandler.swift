@@ -14,17 +14,17 @@
 
 import NIOCore
 
-final class GlueHandler {
-  private var partner: GlueHandler?
+final class GlueAndForwarderHandler {
+  private var partner: GlueAndForwarderHandler?
   private var context: ChannelHandlerContext?
   private var pendingRead: Bool = false
   private init() { }
 }
 
-extension GlueHandler {
-  static func matchedPair() -> (GlueHandler, GlueHandler) {
-    let first = GlueHandler()
-    let second = GlueHandler()
+extension GlueAndForwarderHandler {
+  static func matchedPair() -> (GlueAndForwarderHandler, GlueAndForwarderHandler) {
+    let first = GlueAndForwarderHandler()
+    let second = GlueAndForwarderHandler()
 
     first.partner = second
     second.partner = first
@@ -33,7 +33,7 @@ extension GlueHandler {
 }
 
 
-extension GlueHandler {
+extension GlueAndForwarderHandler {
   private func partnerWrite(_ data: NIOAny) {
     self.context?.write(data, promise: nil)
   }
@@ -63,7 +63,7 @@ extension GlueHandler {
 }
 
 
-extension GlueHandler: ChannelDuplexHandler {
+extension GlueAndForwarderHandler: ChannelDuplexHandler {
   typealias InboundIn = NIOAny
   typealias OutboundIn = NIOAny
   typealias OutboundOut = NIOAny
