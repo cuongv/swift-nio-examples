@@ -42,8 +42,8 @@ public struct http1_server {
     // `NIOHTTP2SupportedALPNProtocols` which (using ALPN (https://en.wikipedia.org/wiki/Application-Layer_Protocol_Negotiation))
     // advertises the support of HTTP/2 to the client.
     //var serverConfig = TLSConfiguration.makeServerConfiguration(certificateChain: [sslCertificate], privateKey: sslPrivateKey)
-    let publicKey = "/Users/alex.vuong/Data/Learn/SwiftNiO/swift-nio-examples/connect-proxy/Sources/cuongv-self-cert.pem"
-    let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNiO/swift-nio-examples/connect-proxy/Sources/cuongv-private-key.pem"
+    let publicKey = "/Users/alex.vuong/Data/Learn/SwiftNiO/swift-nio-examples/connect-proxy/Sources/generated_cer.pem"
+    let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNiO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
 
     var serverConfig = TLSConfiguration.makeServerConfiguration(
       certificateChain: try! NIOSSLCertificate.fromPEMFile(publicKey).map { .certificate($0) },

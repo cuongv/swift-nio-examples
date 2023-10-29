@@ -66,7 +66,7 @@ public class X509Certificate {
     return pkey;
   }
 
-  func generate_key2() -> EVP_PKEY? {
+  func generate_key2() -> EVP_PKEY {
     // Create an EVP key context for RSA key generation
     let ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nil);
 
@@ -85,16 +85,35 @@ public class X509Certificate {
     }
 
     // Generate the RSA key pair
-    var key: EVP_PKEY?
-    if EVP_PKEY_keygen(ctx, &key) <= 0 {
+    var keypair: EVP_PKEY?
+    if EVP_PKEY_keygen(ctx, &keypair) <= 0 {
       // Handle error
       ERR_print_errors_fp(stderr);
       // Cleanup and return
-      EVP_PKEY_free(key);
+      EVP_PKEY_free(keypair);
       EVP_PKEY_CTX_free(ctx);
     }
-    EVP_PKEY_CTX_free(ctx);
-    return key
+//    EVP_PKEY_CTX_free(ctx);
+    let path = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
+    let pkey_file = fopen(path, "wb");
+    if PEM_write_PrivateKey(pkey_file, keypair, nil, nil, 0, nil, nil) == 0 {
+      print("can not write file")
+    }
+    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    fclose(pkey_file)
+
+//    let publicKey = EVP_PKEY_new();
+//    if EVP_PKEY_copy_parameters(publicKey, keypair) <= 0 {
+//      print("can not get public key")
+//    }
+//
+//    // Extract the private key
+//    let privateKey = EVP_PKEY_new();
+//    if EVP_PKEY_copy_parameters(privateKey, keypair) <= 0 {
+//      print("can not get private key")
+//    }
+
+    return keypair!
   }
 
   func generate_x509(pkey: EVP_PKEY) -> X509? {
@@ -110,7 +129,9 @@ public class X509Certificate {
     X509_gmtime_adj(X509_getm_notBefore(x509), 0);
     X509_gmtime_adj(X509_getm_notAfter(x509), 31536000);
     /* Set the public key for our certificate. */
+    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
     X509_set_pubkey(x509, pkey);
+    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
     /* We want to copy the subject name to the issuer name. */
     let name: X509_NAME = X509_get_subject_name(x509);
     /* Set the country code and common name. */
@@ -125,6 +146,14 @@ public class X509Certificate {
       X509_free(x509);
       return nil;
     }
+
+    let path = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_cer.pem"
+    let pkey_file = fopen(path, "wb");
+    if PEM_write_X509(pkey_file, x509) == 0 {
+      print("can not write file")
+    }
+    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    fclose(pkey_file)
 
     return x509;
   }

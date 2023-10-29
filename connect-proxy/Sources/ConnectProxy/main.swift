@@ -42,22 +42,21 @@ import NIOHTTP2
 
 
 
-let cert = "/Users/alex.vuong/Data/Work/Projects/TestVapor/swift-nio-examples/connect-proxy/Sources/cuongv-self-cert.pem"
-let privateKey = "/Users/alex.vuong/Data/Work/Projects/TestVapor/swift-nio-examples/connect-proxy/Sources/cuongv-private-key.pem"
+let cert = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_cer.pem"
+let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
 
-
-let pkey = X509Certificate().generate_key2()!
+let pkey = X509Certificate().generate_key2()
 let x509 = X509Certificate().generate_x509(pkey: pkey)!
 
-var configuration = TLSConfiguration.makeServerConfiguration(
-  certificateChain: [.certificate(NIOSSLCertificate(withOwnedReference: x509))],
-  privateKey: .privateKey(NIOSSLPrivateKey(withReference: pkey))
-)
-
 //var configuration = TLSConfiguration.makeServerConfiguration(
-//  certificateChain: try NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },
-//  privateKey: .file(privateKey)
+//  certificateChain: [.certificate(NIOSSLCertificate(withOwnedReference: x509))],
+//  privateKey: .privateKey(NIOSSLPrivateKey(withReference: pkey.privateKey))
 //)
+
+var configuration = TLSConfiguration.makeServerConfiguration(
+  certificateChain: try NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },
+  privateKey: .file(privateKey)
+)
 configuration.applicationProtocols =  ["http/1.1"] //NIOHTTP2SupportedALPNProtocols
 
 let serverSSLContext = try NIOSSLContext(configuration: configuration)
