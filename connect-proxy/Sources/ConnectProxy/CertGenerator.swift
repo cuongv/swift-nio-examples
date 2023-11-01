@@ -194,7 +194,7 @@ public class X509Certificate {
     X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, "imba", -1, -1, 0);
 //    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
 //    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
-    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0);
 //    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
 
 //    add_ext(cert: x509!, nid: NID_subject_alt_name, value: "127.0.0.1")
@@ -205,7 +205,7 @@ public class X509Certificate {
     // Add DNS names to the SAN extension
     let dns_name1 = GENERAL_NAME_new();
     let str = ASN1_OCTET_STRING_new()
-    let ee = "127.0.0.1"
+    let ee = "localhost"
     ASN1_STRING_set(str, ee, Int32(ee.count))
     GENERAL_NAME_set0_value(dns_name1, GEN_DNS, str)
     OPENSSL_sk_push(names, dns_name1)
