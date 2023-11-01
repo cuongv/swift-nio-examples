@@ -25,6 +25,7 @@ final class ConnectHandler {
   private var logger: Logger
   public static var storedFrame = [HTTP2Frame]()
   public static var storedByteBuffer = [ByteBuffer]()
+  private var host: String = ""
 
   init(logger: Logger) {
     self.upgradeState = .idle
@@ -128,8 +129,6 @@ extension ConnectHandler {
     }
 
     self.logger.info("\(head.method) \(head.uri) \(head.version)")
-    print(head.uri)
-    print(head.method)
 
     guard head.method == .CONNECT else {
       self.logger.error("Invalid HTTP method: \(head.method)")
@@ -140,6 +139,9 @@ extension ConnectHandler {
     let components = head.uri.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
     let host = components.first!  // There will always be a first.
     let port = components.last.flatMap { Int($0, radix: 10) } ?? 80  // Port 80 if not specified
+
+    self.host = String(host)
+    print("host here: ", host)
 
     self.upgradeState = .beganConnecting
     self.connectTo(host: String(host), port: port, context: context)
@@ -222,27 +224,34 @@ extension ConnectHandler {
     // Now we need to glue our channel and the peer channel together.
     let (localGlue, peerGlue) = GlueHandler.matchedPair()
 
-    context.channel.pipeline.addHandlers([
-      NIOSSLServerHandler(context: serverSSLContext),
-      SniperHandler(),
-//      NIOHTTP2Handler(mode: .server),
-//      HTTP2FrameHandler(),
-//      HTTP2FrameRevertHandler(),
-      localGlue
-    ]).and(peerChannel.pipeline.addHandlers([
-      try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil),
-        peerGlue,
-    ]))
-//    //      .flatMap { (_: HTTP2StreamMultiplexer) in
-    //        context.channel.pipeline.addHandler(ErrorHandler())
-    //      }
+    var localHandlers = [ChannelHandler]()
+    var peerHandlers = [ChannelHandler]()
+
+    if "https://httpbin.org/anything".contains(host) {
+      localHandlers = [
+        NIOSSLServerHandler(context: serverSSLContext),
+        SniperHandler(),
+        //      NIOHTTP2Handler(mode: .server),
+        //      HTTP2FrameHandler(),
+        //      HTTP2FrameRevertHandler(),
+        localGlue
+      ]
+      peerHandlers = [
+        try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil),
+        peerGlue
+      ]
+    } else {
+      localHandlers = [localGlue]
+      peerHandlers = [peerGlue]
+    }
+    context.channel.pipeline.addHandlers(localHandlers).and(peerChannel.pipeline.addHandlers(peerHandlers))
     .whenComplete { result in
       switch result {
       case .success(_):
         context.pipeline.removeHandler(self, promise: nil)
         context.close(promise: nil)
-        print(context.pipeline)
-        print(peerChannel.pipeline)
+//        print(context.pipeline)
+//        print(peerChannel.pipeline)
       case .failure(_):
         // Close connected peer channel before closing our channel.
         peerChannel.close(mode: .all, promise: nil)

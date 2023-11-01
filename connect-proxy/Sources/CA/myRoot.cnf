@@ -57,8 +57,9 @@ emailAddress_default            = cuongv88@gmail.com
 [ v3_ca ]
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always,issuer
-keyUsage = critical, digitalSignature, cRLSign, keyCertSign
-basicConstraints = critical, CA:true, pathlen:1
+keyUsage = critical, keyCertSign
+basicConstraints = critical, CA:true, pathlen:0
+extendedKeyUsage = serverAuth, clientAuth
 #crlDistributionPoints = URI:http://myCA/myRoot.crl
 
 [ comment ]

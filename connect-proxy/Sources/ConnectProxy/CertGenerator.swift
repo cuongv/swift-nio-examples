@@ -118,19 +118,22 @@ public class X509Certificate {
   }
 
 //  func add_ext(cert: X509, nid: Int32, value: String) -> Int {
-//    var ex: X509_EXTENSION
-//    let ctx: X509V3_CTX
+//    var ctx = X509V3_CTX()
 //
 //    /* This sets the 'context' of the extensions. */
 //    /* No configuration database */
 //
-//    X509V3_set_ctx_nodb(&ctx);
+//    ctx.db = nil
+////    X509V3_set_ctx_nodb(&ctx);
+//
 //    /* Issuer and subject certs: both the target since it is self signed,
 //     * no request and no CRL
 //     */
 //    X509V3_set_ctx(&ctx, cert, cert, nil, nil, 0);
-//    ex = X509V3_EXT_conf_nid(nil, &ctx, nid, value);
+//    let ex = X509V3_EXT_conf_nid(nil, &ctx, nid, value);
 //    if ex == nil {
+//      print("fuck u can not add ext: ", value)
+//      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
 //      return 0
 //    }
 //
@@ -149,6 +152,8 @@ public class X509Certificate {
     }
     // To extract the private key
 //    EVP_PKEY_new_raw_private_key_ex()
+
+    X509_set_version(x509, 2)
 
     /* Set the serial number. */
     ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
@@ -187,7 +192,58 @@ public class X509Certificate {
     /* Set the country code and common name. */
     X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, "CA", -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, "imba", -1, -1, 0);
+//    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
+//    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+//    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+
+//    add_ext(cert: x509!, nid: NID_subject_alt_name, value: "127.0.0.1")
+
+//    var names = GENERAL_NAMES_new()
+    let names = OPENSSL_sk_new_null()
+
+    // Add DNS names to the SAN extension
+    let dns_name1 = GENERAL_NAME_new();
+    let str = ASN1_OCTET_STRING_new()
+    let ee = "127.0.0.1"
+    ASN1_STRING_set(str, ee, Int32(ee.count))
+    GENERAL_NAME_set0_value(dns_name1, GEN_DNS, str)
+    OPENSSL_sk_push(names, dns_name1)
+
+//    GENERAL_NAME *dns_name2 = GENERAL_NAME_new();
+//    GENERAL_NAME_set0_value(dns_name2, GEN_DNS, "www.example.com");
+//    sk_GENERAL_NAME_push(names, dns_name2);
+    let rawPointer = UnsafeMutableRawPointer(names)
+    let ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, rawPointer)
+//    let ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, nil)
+    if ext != nil {
+      // Add to the end of the extension stack
+      if X509_add_ext(x509, ext, -1) == 0 {
+        print("added failed")
+      }
+      X509_EXTENSION_free(ext)
+    } else {
+      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    }
+
+//    // Create the EKU extension value as an ASN1_OBJECT
+//    let eku_oid = OBJ_nid2obj(NID_server_auth);
+//
+//    let eku_ext = X509V3_EXT_i2d(NID_server_auth, 0, eku_oid);
+//    if eku_ext != nil {
+//      X509_add_ext(x509, eku_ext, -1);
+//      X509_EXTENSION_free(eku_ext);
+//    } else {
+//      print("can not add ext")
+//      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+//      // Handle extension creation error
+//    }
+
+//    X509_get_extended_key_usage(x509)
+//    X509_set_ex_data(<#T##r: OpaquePointer!##OpaquePointer!#>, <#T##idx: Int32##Int32#>, <#T##arg: UnsafeMutableRawPointer!##UnsafeMutableRawPointer!#>)
+//    X509_EXTENSION *ext = X509_get_ext(x509, extIndex);
+
+
     X509_set_subject_name(x509, name);
 
     /* Now set the issuer name. */
