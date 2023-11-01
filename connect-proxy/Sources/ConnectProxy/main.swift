@@ -46,7 +46,7 @@ let cert = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-pro
 let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
 
 let pkey = X509Certificate().generate_key2()
-let x509 = X509Certificate().generate_x509(pkey: pkey)!
+let x509 = X509Certificate().generate_x509(pkey: pkey, isCA: false)!
 
 //var configuration = TLSConfiguration.makeServerConfiguration(
 //  certificateChain: [.certificate(NIOSSLCertificate(withOwnedReference: x509))],

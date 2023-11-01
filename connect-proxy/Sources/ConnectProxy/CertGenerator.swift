@@ -14,6 +14,7 @@ typealias X509 = OpaquePointer
 typealias X509_NAME = OpaquePointer
 typealias EVP_PKEY = OpaquePointer
 typealias RSA = OpaquePointer
+typealias X509_EXTENSION = OpaquePointer
 
 public class X509Certificate {
   public static func issuerName(for certificate: SecCertificate) -> String? {
@@ -116,32 +117,106 @@ public class X509Certificate {
     return keypair!
   }
 
-  func generate_x509(pkey: EVP_PKEY) -> X509? {
+//  func add_ext(cert: X509, nid: Int32, value: String) -> Int {
+//    var ex: X509_EXTENSION
+//    let ctx: X509V3_CTX
+//
+//    /* This sets the 'context' of the extensions. */
+//    /* No configuration database */
+//
+//    X509V3_set_ctx_nodb(&ctx);
+//    /* Issuer and subject certs: both the target since it is self signed,
+//     * no request and no CRL
+//     */
+//    X509V3_set_ctx(&ctx, cert, cert, nil, nil, 0);
+//    ex = X509V3_EXT_conf_nid(nil, &ctx, nid, value);
+//    if ex == nil {
+//      return 0
+//    }
+//
+//    X509_add_ext(cert,ex,-1)
+//    X509_EXTENSION_free(ex)
+//
+//    return 1
+//  }
+
+  func generate_x509(pkey: EVP_PKEY, isCA: Bool = false) -> X509? {
     /* Allocate memory for the X509 structure. */
     let x509 = X509_new()
     if x509 == nil {
       print("Unable to create X509 structure.")
       return nil
     }
+    // To extract the private key
+//    EVP_PKEY_new_raw_private_key_ex()
+
     /* Set the serial number. */
     ASN1_INTEGER_set(X509_get_serialNumber(x509), 1);
     /* This certificate is valid from now until exactly one year from now. */
     X509_gmtime_adj(X509_getm_notBefore(x509), 0);
     X509_gmtime_adj(X509_getm_notAfter(x509), 31536000);
-    /* Set the public key for our certificate. */
-    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+
+    // Set public key?
     X509_set_pubkey(x509, pkey);
-    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+
+    if isCA {
+//      let str = ASN1_OCTET_STRING_new()
+//      let ee = "CA:TRUE"
+//      ASN1_STRING_set(str, ee, Int32(ee.count))
+//
+//      var ext: X509_EXTENSION?
+//      X509_EXTENSION_create_by_NID(&ext,NID_basic_constraints,1,str)
+//      X509_add_ext(x509,ext,-1)
+
+      // Other method
+//      add_ext(x509x, NID_basic_constraints, "critical,CA:TRUE");
+//      add_ext(x509x, NID_key_usage, "critical,keyCertSign,cRLSign");
+//
+//      add_ext(x509x, NID_subject_key_identifier, "hash");
+//
+//      /* Some Netscape specific extensions */
+//      add_ext(x509x, NID_netscape_cert_type, "sslCA");
+//
+//      add_ext(x509x, NID_netscape_comment, "example comment extension");
+//
+//      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    }
+
     /* We want to copy the subject name to the issuer name. */
-    let name: X509_NAME = X509_get_subject_name(x509);
+    let name: X509_NAME = X509_get_subject_name(x509)
     /* Set the country code and common name. */
     X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, "CA", -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, "imba", -1, -1, 0);
-    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+    X509_set_subject_name(x509, name);
+
     /* Now set the issuer name. */
-    X509_set_issuer_name(x509, name);
+//    let issuer_name: X509_NAME = X509_NAME_new()
+//    X509_NAME_add_entry_by_txt(issuer_name, "C",  MBSTRING_ASC, "CA", -1, -1, 0);
+//    X509_NAME_add_entry_by_txt(issuer_name, "O",  MBSTRING_ASC, "imba", -1, -1, 0);
+//    X509_NAME_add_entry_by_txt(issuer_name, "CN", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+//    X509_set_issuer_name(x509, issuer_name);
+
+
     /* Actually sign the certificate with our key. */
-    if X509_sign(x509, pkey, EVP_sha1()) == 0 {
+    // Fetch the CA key
+    let caKeyPath = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/CA/myRoot_plain.key"
+    let ca_pkey_file = fopen(caKeyPath, "r");
+
+    let cakey = PEM_read_PrivateKey(ca_pkey_file, nil, nil, nil)
+    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+//    let cakey = PEM_read_RSAPrivateKey(ca_pkey_file, nil, nil, nil)
+
+    let caCertPath = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/CA/myRoot_plain.cer"
+    let ca_cert_file = fopen(caCertPath, "r");
+    let ca_certificate = PEM_read_X509(ca_cert_file, nil, nil, nil)
+
+    if X509_set_issuer_name(x509, X509_get_issuer_name(ca_certificate)) == 0 {
+      print("can not set issuer name")
+      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    }
+
+    if X509_sign(x509, cakey, EVP_sha256()) == 0 {
       print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
       X509_free(x509);
       return nil;
@@ -152,6 +227,7 @@ public class X509Certificate {
     if PEM_write_X509(pkey_file, x509) == 0 {
       print("can not write file")
     }
+//    print(X509Certificate.issuerName(for: x509))
     print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
     fclose(pkey_file)
 
