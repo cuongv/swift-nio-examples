@@ -227,9 +227,10 @@ extension ConnectHandler {
     var localHandlers = [ChannelHandler]()
     var peerHandlers = [ChannelHandler]()
 
-    if "https://httpbin.org/anything".contains(host) {
+    if "https://p.stg-myteksi.com".contains(host) {
+//    if true {
       localHandlers = [
-        NIOSSLServerHandler(context: serverSSLContext),
+        NIOSSLServerHandler(context: getServerSSLContext()),
         SniperHandler(),
         //      NIOHTTP2Handler(mode: .server),
         //      HTTP2FrameHandler(),
@@ -244,6 +245,7 @@ extension ConnectHandler {
       localHandlers = [localGlue]
       peerHandlers = [peerGlue]
     }
+
     context.channel.pipeline.addHandlers(localHandlers).and(peerChannel.pipeline.addHandlers(peerHandlers))
     .whenComplete { result in
       switch result {
@@ -282,6 +284,28 @@ extension ConnectHandler {
     context.pipeline.context(handlerType: HTTPResponseEncoder.self).whenSuccess {
       context.pipeline.removeHandler(context: $0, promise: nil)
     }
+  }
+
+  private func getServerSSLContext() -> NIOSSLContext {
+    let cert = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_cer.pem"
+    let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
+
+    let pkey = X509Certificate().generate_key2()
+    let x509 = X509Certificate().generate_x509(pkey: pkey.1, host: host, isCA: false)!
+
+//    var configuration = TLSConfiguration.makeServerConfiguration(
+//      certificateChain: [.certificate(NIOSSLCertificate(withOwnedReference: x509))],
+//      privateKey: .privateKey(NIOSSLPrivateKey(withReference: pkey.0))
+//    )
+
+    var configuration = TLSConfiguration.makeServerConfiguration(
+      certificateChain: try! NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },
+      privateKey: .file(privateKey)
+    )
+    configuration.applicationProtocols =  ["http/1.1"] //NIOHTTP2SupportedALPNProtocols
+
+    let serverSSLContext = try! NIOSSLContext(configuration: configuration)
+    return serverSSLContext
   }
 }
 

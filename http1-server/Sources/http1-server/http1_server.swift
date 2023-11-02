@@ -43,11 +43,11 @@ public struct http1_server {
     // advertises the support of HTTP/2 to the client.
     //var serverConfig = TLSConfiguration.makeServerConfiguration(certificateChain: [sslCertificate], privateKey: sslPrivateKey)
 
-    let cert = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/generated_cer.pem"
-    let privateKey = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/generated_privatekey.pem"
+    let cert = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/localhost_cer.pem"
+    let privateKey = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/localhost_key.pem"
 
-//    let cert = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/cuongv-self-cert.pem"
-//    let privateKey = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/cuongv-private-key.pem"
+//    let cert = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/generated_cer.pem"
+//    let privateKey = "/users/alex.vuong/data/learn/swiftnio/swift-nio-examples/connect-proxy/sources/generated_privatekey.pem"
 
     var serverConfig = TLSConfiguration.makeServerConfiguration(
       certificateChain: try! NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },

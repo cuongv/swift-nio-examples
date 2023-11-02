@@ -29,45 +29,7 @@ public class X509Certificate {
     return issuer
   }
 
-  func generate_key() -> EVP_PKEY? {
-    //    let rsa = RSA_new()
-    //    // Set the public exponent for the key
-    //    let e = BN_new()
-    //    BN_set_word(e, RSA_F4) // RSA_F4 is a commonly used value for the public exponent
-    //
-    //    // Generate the RSA key pair
-    //    RSA_generate_key_ex(rsa, 2048, e, nil)
-    OpenSSL_add_all_algorithms()
-
-    /* Allocate memory for the EVP_PKEY structure. */
-    let pkey: EVP_PKEY? = EVP_PKEY_new()
-    if pkey == nil {
-      print("Unable to create EVP_PKEY structure.")
-      return nil;
-    }
-
-    /* Generate the RSA key and assign it to pkey. */
-//    let rsa: RSA = RSA_generate_key(2048, 65537, nil, nil)
-    let rsa: RSA = RSA_new()
-    let e = BN_new();
-    BN_set_word(e, 0x10001); // RSA public exponent
-    RSA_generate_key_ex(rsa, 2048, e, nil); // key_bits is the desired key size
-    BN_free(e);
-
-    let bytesPointer = UnsafeMutableRawPointer.allocate(byteCount: MemoryLayout<RSA>.size, alignment: 1)
-    bytesPointer.storeBytes(of: rsa, as: RSA.self)
-
-    if EVP_PKEY_assign(pkey, EVP_PKEY_RSA, bytesPointer) == 0 {
-      print("Unable to generate 2048-bit RSA key.")
-      EVP_PKEY_free(pkey);
-      return nil;
-    }
-
-    /* The key has been generated, return it. */
-    return pkey;
-  }
-
-  func generate_key2() -> EVP_PKEY {
+  func generate_key2() -> (RSA, EVP_PKEY) {
     // Create an EVP key context for RSA key generation
     let ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nil);
 
@@ -97,10 +59,54 @@ public class X509Certificate {
 //    EVP_PKEY_CTX_free(ctx);
     let path = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
     let pkey_file = fopen(path, "wb");
+
+    var privateKey = EVP_PKEY_new()
+////    unsigned char privateKey[2048]; // Assuming a sufficiently large buffer
+//    let len = sizeof(privateKey);
+//    var privateKey: [UInt8] = []
+//    var len: UnsafeMutablePointer<Int> = UnsafeMutablePointer(2048)
+
+//    var intValue: Int = 2048 // Your integer value
+//    withUnsafeMutablePointer(to: &intValue) { intPointer in
+//      // 'intPointer' is an UnsafeMutablePointer<Int> pointing to 'intValue'
+//      // You can use 'intPointer' as needed
+//      print(intPointer.pointee) // This will print the value 42
+//      EVP_PKEY_get1_EC_KEY(
+//      EVP_PKEY_get_raw_private_key(<#T##pkey: OpaquePointer!##OpaquePointer!#>, <#T##priv: UnsafeMutablePointer<UInt8>!##UnsafeMutablePointer<UInt8>!#>, <#T##len: UnsafeMutablePointer<Int>!##UnsafeMutablePointer<Int>!#>)
+//      if EVP_PKEY_get_raw_private_key(keypair, &privateKey, intPointer) == 0 {
+//        print("Can not get private key from keypair")
+//        print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+//      }
+//    }
+
+    let bio = BIO_new(BIO_s_mem())
+    PEM_write_bio_PrivateKey(bio, keypair, nil, nil, 0, nil, nil)
+//    PEM_write_bio_RSAPrivateKey(pri, keypair, nil, nil, 0, nil, nil)
+
+//    let pri_key = (char*)malloc(pri_len + 1);
+
+//    EVP_PKEY_get1_RSA
+//    if PEM_read_bio_PrivateKey(privateKey, nil, nil, nil) == 0 {
+//      print("CAn not read")
+//    }
+//    BIO_read(bio, pri_key, 2048)
+//    pri_key[pri_len] = '\0'
+
+    // This is get1 function, need to handle memory soon
+    let rsaKey: RSA? = EVP_PKEY_get1_RSA(keypair)
+    if rsaKey == nil {
+      print("Can not get private key from keypair")
+      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
+    }
+
+//    if EVP_PKEY_get_raw_private_key(keypair, &privateKey, len) == 0 {
+//      print("Can not get private key from keypair")
+//    }
+
     if PEM_write_PrivateKey(pkey_file, keypair, nil, nil, 0, nil, nil) == 0 {
       print("can not write file")
+      print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
     }
-    print(String(format: "Error signing certificate. %s", ERR_error_string(ERR_get_error(), nil)!))
     fclose(pkey_file)
 
 //    let publicKey = EVP_PKEY_new();
@@ -114,7 +120,7 @@ public class X509Certificate {
 //      print("can not get private key")
 //    }
 
-    return keypair!
+    return (rsaKey!, keypair!)
   }
 
 //  func add_ext(cert: X509, nid: Int32, value: String) -> Int {
@@ -143,7 +149,7 @@ public class X509Certificate {
 //    return 1
 //  }
 
-  func generate_x509(pkey: EVP_PKEY, isCA: Bool = false) -> X509? {
+  func generate_x509(pkey: EVP_PKEY, host: String, isCA: Bool = false) -> X509? {
     /* Allocate memory for the X509 structure. */
     let x509 = X509_new()
     if x509 == nil {
@@ -192,30 +198,27 @@ public class X509Certificate {
     /* Set the country code and common name. */
     X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, "CA", -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, "imba", -1, -1, 0);
-//    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
-//    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "httpbin.org", -1, -1, 0);
-    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, "localhost", -1, -1, 0);
-//    X509_NAME_add_entry_by_txt(name, "subjectAltName", MBSTRING_ASC, "127.0.0.1", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, host, -1, -1, 0);
 
-//    add_ext(cert: x509!, nid: NID_subject_alt_name, value: "127.0.0.1")
-
-//    var names = GENERAL_NAMES_new()
     let names = OPENSSL_sk_new_null()
 
     // Add DNS names to the SAN extension
     let dns_name1 = GENERAL_NAME_new();
     let str = ASN1_OCTET_STRING_new()
-    let ee = "localhost"
+    let ee = host
     ASN1_STRING_set(str, ee, Int32(ee.count))
     GENERAL_NAME_set0_value(dns_name1, GEN_DNS, str)
     OPENSSL_sk_push(names, dns_name1)
 
-//    GENERAL_NAME *dns_name2 = GENERAL_NAME_new();
-//    GENERAL_NAME_set0_value(dns_name2, GEN_DNS, "www.example.com");
-//    sk_GENERAL_NAME_push(names, dns_name2);
+//    let dns_name2 = GENERAL_NAME_new();
+//    let str2 = ASN1_OCTET_STRING_new()
+//    let ee2 = "*.localhost"
+//    ASN1_STRING_set(str2, ee2, Int32(ee2.count))
+//    GENERAL_NAME_set0_value(dns_name2, GEN_DNS, str2)
+//    OPENSSL_sk_push(names, dns_name2)
+
     let rawPointer = UnsafeMutableRawPointer(names)
     let ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, rawPointer)
-//    let ext = X509V3_EXT_i2d(NID_subject_alt_name, 0, nil)
     if ext != nil {
       // Add to the end of the extension stack
       if X509_add_ext(x509, ext, -1) == 0 {
@@ -310,91 +313,3 @@ public class X509Certificate {
     return issuer
   }
 }
-
-class CertGenerator {
-  init() {
-    //    SSL_library_init()
-
-    //    let x509 = X509()
-    //    X509 *x509 = X509_new();
-
-
-    //    let generator = KeyPairGenerator()
-    //    generator.generateKeyPair()
-  }
-}
-
-class KeyPairGenerator {
-  let publicKeyIdentifier: [UInt8] = [UInt8]("com.apple.sample.publickey\0".utf8)
-  let privateKeyIdentifier: [UInt8] = [UInt8]("com.apple.sample.privatekey\0".utf8)
-
-  func generateKeyPair() {
-    var status: OSStatus = noErr
-    var privateKeyAttr: [String: Any] = [:]
-    var publicKeyAttr: [String: Any] = [:]
-    var keyPairAttr: [String: Any] = [:]
-
-    let publicTag = Data(bytes: publicKeyIdentifier, count: publicKeyIdentifier.count)
-    let privateTag = Data(bytes: privateKeyIdentifier, count: privateKeyIdentifier.count)
-
-    var publicKey: SecKey?
-    var privateKey: SecKey?
-
-    keyPairAttr[kSecAttrKeyType as String] = kSecAttrKeyTypeRSA
-    keyPairAttr[kSecAttrKeySizeInBits as String] = 1024
-
-    privateKeyAttr[kSecAttrIsPermanent as String] = true
-    privateKeyAttr[kSecAttrApplicationTag as String] = privateTag
-
-    publicKeyAttr[kSecAttrIsPermanent as String] = true
-    publicKeyAttr[kSecAttrApplicationTag as String] = publicTag
-
-    keyPairAttr[kSecPrivateKeyAttrs as String] = privateKeyAttr
-    keyPairAttr[kSecPublicKeyAttrs as String] = publicKeyAttr
-
-    status = SecKeyGeneratePair(keyPairAttr as CFDictionary, &publicKey, &privateKey)
-
-    // Handle errors if necessary...
-
-    if publicKeyAttr.isEmpty == false { publicKeyAttr.removeAll() }
-    if privateKeyAttr.isEmpty == false { privateKeyAttr.removeAll() }
-    if keyPairAttr.isEmpty == false { keyPairAttr.removeAll() }
-    if publicKey != nil { publicKey = nil }
-    if privateKey != nil { privateKey = nil }
-  }
-
-  //  func generateSelfSignedCertificate() {
-  //    let attributes: [String: Any] = [
-  //      kSecAttrKeySizeInBits as String: 2048,
-  //      kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-  //    ]
-  //    guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, nil) else {
-  //      print("Failed to create a private key")
-  //      return
-  //    }
-  //
-  //    let commonName = "Your Common Name"
-  //    let certificateAttributes: [String: Any] = [
-  //      kSecAttrIsPermanent as String: kCFBooleanTrue,
-  //      kSecAttrLabel as String: "Self-Signed Certificate",
-  //      kSecAttrSubject as String: [
-  //        wName as String: commonName
-  //      ]
-  //    ]
-  //
-  //    guard let certificate = SecCertificateCreateWithAttributes(nil, certificateAttributes as CFDictionary, privateKey) else {
-  //      print("Failed to create a certificate")
-  //      return
-  //    }
-  //
-  //    let identity = SecIdentityCreateWithCertificate(nil, certificate, privateKey)
-  //
-  //    // Optionally, you can add the certificate and private key to the keychain.
-  //
-  //    // Dispose of resources.
-  //    SecKeyCopyExternalRepresentation(privateKey, nil)
-  //    SecCertificateCopyData(certificate)
-  //    SecIdentityCopyCertificate(identity, nil)
-  //  }
-}
-
