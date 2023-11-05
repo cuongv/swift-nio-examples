@@ -22,18 +22,21 @@ final class HTTP1Handler: ChannelInboundHandler {
 
   func channelRead(context: ChannelHandlerContext, data: NIOAny) {
     let requestPart = self.unwrapInboundIn(data)
-    print(requestPart)
     let str = "Hello Nu"
-
+    print("Channel read")
     switch requestPart {
     case .head(let headerFromRequest):
       var headers = HTTPHeaders()
       headers.add(name: "content-length", value: "\(str.count)")
       let responseHead = HTTPResponseHead(version: headerFromRequest.version, status: .ok, headers: headers)
       context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+      print("Header of request")
+      print(headerFromRequest)
     case .body(let bodyFromRequest):
-      let str = bodyFromRequest.getString(at: 0, length: bodyFromRequest.readableBytes)
-      print("Body of request: ", str)
+      if let str = bodyFromRequest.getString(at: 0, length: bodyFromRequest.readableBytes) {
+        print("Body of request: ")
+        print(str)
+      }
 //      context.write(self.wrapOutboundOut(.body(.byteBuffer(body))), promise: nil)
       break
     case .end:
@@ -45,6 +48,7 @@ final class HTTP1Handler: ChannelInboundHandler {
       context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { result in
         context.close(promise: nil)
       }
+      print("Channel end")
 
 //      context.eventLoop.execute {
 //        print("Get request from client")
@@ -60,7 +64,10 @@ final class HTTP1Handler: ChannelInboundHandler {
 //        context.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
 //      }
 
-
     }
+  }
+
+  func channelReadComplete(context: ChannelHandlerContext) {
+    print("Channel read complete")
   }
 }

@@ -19,6 +19,7 @@ import NIOHTTP2
 import Logging
 import NIOSSL
 import NIOExtras
+import Foundation
 
 final class ConnectHandler {
   private var upgradeState: State
@@ -67,7 +68,7 @@ extension ConnectHandler: ChannelInboundHandler {
         // Upgrade has completed!
         self.upgradeState = .upgradeComplete(pendingBytes: [])
         self.removeDecoder(context: context)
-        self.glue(peerChannel, context: context)
+        self.glue(peerChannel, clientToProxyContext: context)
       }
 
     case .awaitingConnection(var pendingBytes):
@@ -144,44 +145,44 @@ extension ConnectHandler {
     print("host here: ", host)
 
     self.upgradeState = .beganConnecting
-    self.connectTo(host: String(host), port: port, context: context)
+    self.connectTo(host: String(host), port: port, clientToProxyContext: context)
   }
 
-  private func connectTo(host: String, port: Int, context: ChannelHandlerContext) {
+  private func connectTo(host: String, port: Int, clientToProxyContext: ChannelHandlerContext) {
     self.logger.info("Connecting to \(host):\(port)")
 
-    let channelFuture = ClientBootstrap(group: context.eventLoop)
+    let channelFuture = ClientBootstrap(group: clientToProxyContext.eventLoop)
       .connect(host: String(host), port: port)
 
     channelFuture.whenSuccess { channel in
-      self.connectSucceeded(channel: channel, context: context)
+      self.connectSucceeded(proxyToServerChannel: channel, clientToProxyContext: clientToProxyContext)
     }
     channelFuture.whenFailure { error in
-      self.connectFailed(error: error, context: context)
+      self.connectFailed(error: error, context: clientToProxyContext)
     }
   }
 
-  private func connectSucceeded(channel: Channel, context: ChannelHandlerContext) {
-    self.logger.info("Connected to \(String(describing: channel.remoteAddress))")
+  private func connectSucceeded(proxyToServerChannel: Channel, clientToProxyContext: ChannelHandlerContext) {
+    self.logger.info("Connected to \(String(describing: proxyToServerChannel.remoteAddress))")
 
     switch self.upgradeState {
     case .beganConnecting:
       // Ok, we have a channel, let's wait for end.
-      self.upgradeState = .awaitingEnd(connectResult: channel)
+      self.upgradeState = .awaitingEnd(connectResult: proxyToServerChannel)
 
     case .awaitingConnection(pendingBytes: let pendingBytes):
       // Upgrade complete! Begin gluing the connection together.
       self.upgradeState = .upgradeComplete(pendingBytes: pendingBytes)
-      self.glue(channel, context: context)
+      self.glue(proxyToServerChannel, clientToProxyContext: clientToProxyContext)
 
     case .awaitingEnd(let peerChannel):
       // This case is a logic error, close already connected peer channel.
       peerChannel.close(mode: .all, promise: nil)
-      context.close(promise: nil)
+      clientToProxyContext.close(promise: nil)
 
     case .idle, .upgradeFailed, .upgradeComplete:
       // These cases are logic errors, but let's be careful and just shut the connection.
-      context.close(promise: nil)
+      clientToProxyContext.close(promise: nil)
     }
   }
 
@@ -206,58 +207,67 @@ extension ConnectHandler {
     context.fireErrorCaught(error)
   }
 
-  private func glue(_ peerChannel: Channel, context: ChannelHandlerContext) {
-    self.logger.debug("Gluing together \(ObjectIdentifier(context.channel)) and \(ObjectIdentifier(peerChannel))")
+  private func glue(_ proxyToServerChannel: Channel, clientToProxyContext: ChannelHandlerContext) {
+    self.logger.debug("Gluing together \(ObjectIdentifier(clientToProxyContext.channel)) and \(ObjectIdentifier(proxyToServerChannel))")
 
     // Ok, upgrade has completed! We now need to begin the upgrade process.
     // First, send the 200 message.
     // This content-length header is MUST NOT, but we need to workaround NIO's insistence that we set one.
     let headers = HTTPHeaders([("Content-Length", "0")])
     let head = HTTPResponseHead(version: .init(major: 1, minor: 1), status: .ok, headers: headers)
-    context.write(self.wrapOutboundOut(.head(head)), promise: nil)
-    context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
+    clientToProxyContext.write(self.wrapOutboundOut(.head(head)), promise: nil)
+    clientToProxyContext.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
 
     // Now remove the HTTP encoder.
-    self.removeEncoder(context: context)
-//    let debugInboundHandler = DebugInboundEventsHandler()
-//    let debugOutboundHandler = DebugOutboundEventsHandler()
+    self.removeEncoder(context: clientToProxyContext)
+
+    let debugInboundHandler = DebugInboundEventsHandler()
+    let debugOutboundHandler = DebugOutboundEventsHandler()
+
     // Now we need to glue our channel and the peer channel together.
     let (localGlue, peerGlue) = GlueHandler.matchedPair()
 
-    var localHandlers = [ChannelHandler]()
-    var peerHandlers = [ChannelHandler]()
+    var clientToProxyHandlers = [ChannelHandler]()
+    var proxyToServerHandlers = [ChannelHandler]()
 
-    if "https://p.stg-myteksi.com".contains(host) {
-//    if true {
-      localHandlers = [
+//    if "https://p.stg-myteksi.com".contains(host) {
+    if true {
+      clientToProxyHandlers = [
+//        debugInboundHandler,
+//        debugOutboundHandler,
         NIOSSLServerHandler(context: getServerSSLContext()),
         SniperHandler(),
-        //      NIOHTTP2Handler(mode: .server),
-        //      HTTP2FrameHandler(),
-        //      HTTP2FrameRevertHandler(),
+//        DelayHandler(.seconds(5)),
+//              NIOHTTP2Handler(mode: .server),
+//              HTTP2FrameHandler(),
+//              HTTP2FrameRevertHandler(),
         localGlue
       ]
-      peerHandlers = [
+      proxyToServerHandlers = [
         try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil),
         peerGlue
       ]
     } else {
-      localHandlers = [localGlue]
-      peerHandlers = [peerGlue]
+      clientToProxyHandlers = [localGlue]
+      proxyToServerHandlers = [peerGlue]
     }
 
-    context.channel.pipeline.addHandlers(localHandlers).and(peerChannel.pipeline.addHandlers(peerHandlers))
+    clientToProxyContext.channel.pipeline.addHandlers(clientToProxyHandlers)
+      .and(proxyToServerChannel.pipeline.addHandlers(proxyToServerHandlers))
     .whenComplete { result in
       switch result {
       case .success(_):
-        context.pipeline.removeHandler(self, promise: nil)
-        context.close(promise: nil)
-//        print(context.pipeline)
-//        print(peerChannel.pipeline)
+        clientToProxyContext.pipeline.removeHandler(self, promise: nil)
+        clientToProxyContext.close(promise: nil)
+        print("Client to proxy:")
+        print(clientToProxyContext.pipeline)
+        print("*********************************")
+        print("Proxy to server")
+        print(proxyToServerChannel.pipeline)
       case .failure(_):
         // Close connected peer channel before closing our channel.
-        peerChannel.close(mode: .all, promise: nil)
-        context.close(promise: nil)
+        proxyToServerChannel.close(mode: .all, promise: nil)
+        clientToProxyContext.close(promise: nil)
       }
     }
   }
@@ -302,7 +312,7 @@ extension ConnectHandler {
       certificateChain: try! NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },
       privateKey: .file(privateKey)
     )
-    configuration.applicationProtocols =  ["http/1.1"] //NIOHTTP2SupportedALPNProtocols
+    configuration.applicationProtocols = ["http/1.1"]// NIOHTTP2SupportedALPNProtocols
 
     let serverSSLContext = try! NIOSSLContext(configuration: configuration)
     return serverSSLContext
@@ -323,15 +333,45 @@ final class ByteBuffStorage: ChannelInboundHandler {
 
 final class SniperHandler: ChannelInboundHandler & ChannelOutboundHandler {
   typealias OutboundIn = ByteBuffer
-
   public typealias InboundIn = ByteBuffer
   public typealias InboundOut = ByteBuffer
 
   public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
     let inBuff = self.unwrapInboundIn(data)
     let str = inBuff.getString(at: 0, length: inBuff.readableBytes)
-    print("Get data in sniff: ", str!)
+    print("Get data in sniff: ", str!, inBuff.readableBytes)
     context.fireChannelRead(self.wrapInboundOut(inBuff))
+  }
+}
+
+class DelayHandler: ChannelDuplexHandler {
+  typealias OutboundIn = ByteBuffer
+  public typealias InboundIn = ByteBuffer
+  public typealias InboundOut = ByteBuffer
+  private let delayInSeconds: TimeAmount
+
+  init(_ delayInSeconds: TimeAmount) {
+    self.delayInSeconds = delayInSeconds
+  }
+
+  public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    let promise: EventLoopPromise<Void> = context.eventLoop.makePromise()
+
+    // Schedule a task to complete the promise after the delay
+    context.eventLoop.scheduleTask(in: self.delayInSeconds) {
+      promise.succeed(())
+    }
+
+    // Wait for the promise to be completed
+    promise.futureResult.whenSuccess { _ in
+      // Pass the data to the next handler in the pipeline
+      print("pass the data")
+      context.fireChannelRead(data)
+    }
+
+//    context.eventLoop.scheduleTask(in: self.delayInSeconds) {
+//      context.fireChannelRead(delayedData)
+//    }
   }
 }
 

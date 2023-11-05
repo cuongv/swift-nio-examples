@@ -66,23 +66,28 @@ public struct http1_server {
 
     //Set up the closure that will be used to initialise Child channels
     // (when a connection is accepted to our server)
-      .childChannelInitializer { channel in
+      .childChannelInitializer { channel -> EventLoopFuture<Void> in
 
 //        HTTPServerUpgradeHandler to upgrade to another type of protocol such as websocket
 
-        channel.pipeline.addHandlers([
+        return channel.pipeline.addHandlers([
           NIOSSLServerHandler(context: sslContext),
+//          ByteToMessageHandler(HTTPRequestDecoder()),
+//          ByteToMessageHandler(HTTPResponseEncoder())
         ])
         .flatMap {
           channel.pipeline.configureHTTPServerPipeline()
         }
         .flatMap {
-          channel.pipeline.addHandlers([
+          let out = channel.pipeline.addHandlers([
             HTTP1Handler()
           ])
+          out.whenComplete { result in
+            print("Pipeline: ", channel.pipeline)
+          }
+          return out
         }
       }
-
     // Set up child channel options
       .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
       .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 16)

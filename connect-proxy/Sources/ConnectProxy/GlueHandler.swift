@@ -13,11 +13,13 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
+import Foundation
 
 final class GlueHandler {
   private var partner: GlueHandler?
   private var context: ChannelHandlerContext?
   private var pendingRead: Bool = false
+  private let delay = 5.0
   private init() { }
 }
 
@@ -78,7 +80,11 @@ extension GlueHandler: ChannelDuplexHandler {
   }
 
   func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+//    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+//    context.eventLoop.scheduleTask(in: .seconds(5)) {
+//    sleep(5)
     self.partner?.partnerWrite(data)
+//    }
   }
 
   func channelReadComplete(context: ChannelHandlerContext) {
