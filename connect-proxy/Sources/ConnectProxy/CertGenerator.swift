@@ -394,6 +394,18 @@ public class X509Certificate {
       print("Error open socket")
     }
 
+    var hints = addrinfo()
+    var res2: UnsafeMutablePointer<addrinfo>?
+    let addInfosize = MemoryLayout<addrinfo>.size
+
+    memset(&hints, 0, addInfosize)
+    hints.ai_family = AF_UNSPEC; // use IPv4 or IPv6, whichever
+    hints.ai_socktype = SOCK_STREAM;
+    // Better way is using getaddrinfo to get ip address
+    getaddrinfo("google.com", "443", &hints, &res2)
+
+    /*
+    // Old way to connect with IP adress
     let size = __uint8_t(MemoryLayout<sockaddr_in>.size)
     var server_addr = sockaddr_in()
     server_addr.sin_len = size
@@ -404,8 +416,10 @@ public class X509Certificate {
     var socketAddress = withUnsafePointer(to: &server_addr) { pointer -> sockaddr in
       pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { $0.pointee }
     }
-
     if connect(sockfd, &socketAddress, socklen_t(size)) < 0 {
+     */
+
+    if connect(sockfd, res2?.pointee.ai_addr, res2!.pointee.ai_addrlen) < 0 {
       let errorString = String(cString: strerror(errno))
       print(errorString)
       close(sockfd);
@@ -418,6 +432,7 @@ public class X509Certificate {
       print("Can not set fd")
     }
 
+    // blocking call, should move to background thread
     res = SSL_connect(ssl)
     if res != 1 {
       print("Can not connect to server")
@@ -445,6 +460,9 @@ public class X509Certificate {
       // ALPN negotiation failed
       print("ALPN negotiation failed\n");
     }
+
+    // close connection
+    close(sockfd)
 
     // Cleanup and finalize OpenSSL
     SSL_free(ssl);
