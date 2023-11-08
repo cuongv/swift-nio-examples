@@ -41,10 +41,16 @@ import NIOHTTP2
 //}
 
 //X509Certificate().generate_key2()
+X509Certificate().checkALPN2()
+//ClientTest().test()
+
+let applicationProtocols = ["h2", "http/1.1"]
+let httpVersion: HTTPVersion = .init(major: 1, minor: 1)
 
 var clientConfig = TLSConfiguration.makeClientConfiguration()
-clientConfig.applicationProtocols =  ["http/1.1"] //NIOHTTP2SupportedALPNProtocols
+clientConfig.applicationProtocols = applicationProtocols
 clientConfig.certificateVerification = .noHostnameVerification
+
 let clientSSLContext = try NIOSSLContext(configuration: clientConfig)
 
 let group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)

@@ -8,6 +8,7 @@
 import NIO
 import NIOHTTP1
 import NIOSSL
+import NIOTLS
 
 final class HTTP1Handler: ChannelInboundHandler {
   typealias InboundIn = HTTPServerRequestPart
@@ -18,6 +19,14 @@ final class HTTP1Handler: ChannelInboundHandler {
 //    context.pipeline.context(handlerType: NIOSSLServerHandler.self).whenSuccess {
 //      context.pipeline.removeHandler(context: $0, promise: nil)
 //    }
+  }
+
+  func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+    print("userInboundEventTriggered: ", event)
+//    if let event = event as? TLSUserEvent, case .handshakeCompleted(let negotiatedProtocol) = event {
+//
+//    }
+    context.fireUserInboundEventTriggered(event)
   }
 
   func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -42,13 +51,12 @@ final class HTTP1Handler: ChannelInboundHandler {
     case .end:
       var buffer = context.channel.allocator.buffer(capacity: str.count)
       buffer.writeString(str)
-      //      context.write(self.wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
       context.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
 
       context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { result in
+        print("Finish write and flush")
         context.close(promise: nil)
       }
-      print("Channel end")
 
 //      context.eventLoop.execute {
 //        print("Get request from client")

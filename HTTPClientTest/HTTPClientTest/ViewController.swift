@@ -12,18 +12,27 @@ class ViewController: NSViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    //    let request = URLRequest(url: URL(string: "https://localhost:9090")!)
-    //    let session = URLSession(configuration: .ephemeral)
-    //    session.dataTask(with: request) { data, response, error in
-    //      if error != nil {
-    //        print(error!)
-    //      } else {
-    //        print(String(decoding: data!, as: UTF8.self))
-    //      }
-    //    }
-    //    .resume()
+    let request = URLRequest(url: URL(string: "https://p.stg-myteksi.com:443")!)
+    let session = URLSession(configuration: .ephemeral)
+    session.dataTask(with: request) { data, response, error in
+      if error != nil {
+        print(error!)
+      } else {
+        if let httpResponse = response as? HTTPURLResponse {
+          for (key, value) in httpResponse.allHeaderFields.enumerated() {
+            print("value and key: ", value, key)
+          }
+//          print("headers:", httpResponse.allHeaderFields.keys)
+//          let httpVersion = httpResponse.httpVersion
+//          print("HTTP Version: \(httpVersion)")
+        }
 
-    fetchServerCertificate(forHost: "google.com", port: 443)
+//        print(String(decoding: data!, as: UTF8.self))
+      }
+    }
+    .resume()
+
+    fetchServerCertificate(forHost: "p.stg-myteksi.com:443", port: 443)
   }
 
   func fetchServerCertificate(forHost host: String, port: Int) {
@@ -62,7 +71,7 @@ class ViewController: NSViewController {
             let keys: [CFString] = [kSecOIDSubjectAltName]
             let keyRefs = keys as CFArray
 
-            let values = SecCertificateCopyValues(certificate, keyRefs, nil) as! [String: Any]
+            let values = SecCertificateCopyValues(certificate, nil, nil) as! [String: Any]
             for key in values.keys {
               print(values[key]!)
             }

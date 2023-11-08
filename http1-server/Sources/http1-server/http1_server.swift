@@ -93,8 +93,8 @@ public struct http1_server {
       .childChannelOption(ChannelOptions.maxMessagesPerRead, value: 16)
       .childChannelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator())
 
-    let defaultHost = "localhost"
-//    let defaultHost = "127.0.0.1"
+//    let defaultHost = "localhost"
+    let defaultHost = "127.0.0.1"
     let defaultPort = 9090
 
     let channel = try? bootstrap.bind(host: defaultHost, port: defaultPort).wait()

@@ -151,10 +151,17 @@ extension ConnectHandler {
   private func connectTo(host: String, port: Int, clientToProxyContext: ChannelHandlerContext) {
     self.logger.info("Connecting to \(host):\(port)")
 
-    let channelFuture = ClientBootstrap(group: clientToProxyContext.eventLoop)
-      .connect(host: String(host), port: port)
+//    let sslClientHandler = try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil)
+    let bootstrap = ClientBootstrap(group: clientToProxyContext.eventLoop)
+//      .channelInitializer { channel in
+//        return channel.pipeline.addHandlers([sslClientHandler, HTTPVersionDetectorHandler()])
+//      }
+//      .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+
+    let channelFuture = bootstrap.connect(host: String(host), port: port)
 
     channelFuture.whenSuccess { channel in
+//      print("getAlpnProtocol: ", sslClientHandler.connection.getAlpnProtocol())
       self.connectSucceeded(proxyToServerChannel: channel, clientToProxyContext: clientToProxyContext)
     }
     channelFuture.whenFailure { error in
@@ -214,7 +221,7 @@ extension ConnectHandler {
     // First, send the 200 message.
     // This content-length header is MUST NOT, but we need to workaround NIO's insistence that we set one.
     let headers = HTTPHeaders([("Content-Length", "0")])
-    let head = HTTPResponseHead(version: .init(major: 1, minor: 1), status: .ok, headers: headers)
+    let head = HTTPResponseHead(version: httpVersion, status: .ok, headers: headers)
     clientToProxyContext.write(self.wrapOutboundOut(.head(head)), promise: nil)
     clientToProxyContext.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
 
@@ -229,13 +236,15 @@ extension ConnectHandler {
 
     var clientToProxyHandlers = [ChannelHandler]()
     var proxyToServerHandlers = [ChannelHandler]()
+    let serverProtocolDetector = HTTPVersionDetectorHandler()
+    let sslClientHandler = try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil)
 
 //    if "https://p.stg-myteksi.com".contains(host) {
     if true {
       clientToProxyHandlers = [
 //        debugInboundHandler,
 //        debugOutboundHandler,
-        NIOSSLServerHandler(context: getServerSSLContext()),
+        NIOSSLServerHandler(context: getServerSSLContext(serverProtocolDetector: serverProtocolDetector)),
         SniperHandler(),
 //        DelayHandler(.seconds(5)),
 //              NIOHTTP2Handler(mode: .server),
@@ -244,13 +253,64 @@ extension ConnectHandler {
         localGlue
       ]
       proxyToServerHandlers = [
-        try! NIOSSLClientHandler(context: clientSSLContext, serverHostname: nil),
+        sslClientHandler,
+        serverProtocolDetector,
         peerGlue
       ]
     } else {
       clientToProxyHandlers = [localGlue]
       proxyToServerHandlers = [peerGlue]
     }
+
+//    proxyToServerChannel.pipeline.addHandlers(proxyToServerHandlers)
+//      .whenComplete { result in
+//        switch result {
+//        case .success(_):
+//          clientToProxyContext.channel.pipeline.addHandlers(clientToProxyHandlers)
+//          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+//            print("**********************************************")
+////            print(sslClientHandler.connection.getAlpnProtocol())
+//            print(serverProtocolDetector.negotiatedProtocol)
+//          }
+//        case .failure(let error):
+//          print(error)
+//        }
+//      }
+
+//    proxyToServerChannel.pipeline.addHandlers(proxyToServerHandlers)
+//      .whenComplete { result in
+//        switch result {
+//        case .success(_):
+//          print("Success connect from proxy to server")
+//          let requestHead = HTTPRequestHead(version: .init(major: 1, minor: 1), method: .GET, uri: "/")
+//          let emptyBody = ByteBufferAllocator().buffer(capacity: 0)
+//          let promise: EventLoopPromise<Void> = proxyToServerChannel.eventLoop.makePromise()
+//          promise.futureResult.whenComplete { result in
+//            print("success send some data to server")
+//            clientToProxyContext.channel.pipeline.addHandlers(clientToProxyHandlers)
+//              .whenComplete { result in
+//                switch result {
+//                case .success(_):
+//                  clientToProxyContext.pipeline.removeHandler(self, promise: nil)
+//                  clientToProxyContext.close(promise: nil)
+//                  print(clientToProxyContext.pipeline)
+//                  print("*********************************")
+//                  print("Proxy to server")
+//                  print(proxyToServerChannel.pipeline)
+//                case .failure(_):
+//                  // Can not connect from client to proxy, close both connection
+//                  print("Can not connect from client to proxy")
+//                  proxyToServerChannel.close(mode: .all, promise: nil)
+//                  clientToProxyContext.close(promise: nil)
+//                }
+//              }
+//          }
+//        case .failure(let error):
+//          break
+//        }
+//      }
+//
+//          proxyToServerChannel.writeAndFlush(emptyBody, promise: promise)
 
     clientToProxyContext.channel.pipeline.addHandlers(clientToProxyHandlers)
       .and(proxyToServerChannel.pipeline.addHandlers(proxyToServerHandlers))
@@ -270,12 +330,13 @@ extension ConnectHandler {
         clientToProxyContext.close(promise: nil)
       }
     }
+
   }
 
   private func httpErrorAndClose(context: ChannelHandlerContext) {
     self.upgradeState = .upgradeFailed
     let headers = HTTPHeaders([("Content-Length", "0"), ("Connection", "close")])
-    let head = HTTPResponseHead(version: .init(major: 1, minor: 1), status: .badRequest, headers: headers)
+    let head = HTTPResponseHead(version: httpVersion, status: .badRequest, headers: headers)
     context.write(self.wrapOutboundOut(.head(head)), promise: nil)
     context.writeAndFlush(self.wrapOutboundOut(.end(nil))).whenComplete { (_: Result<Void, Error>) in
       context.close(mode: .output, promise: nil)
@@ -296,7 +357,7 @@ extension ConnectHandler {
     }
   }
 
-  private func getServerSSLContext() -> NIOSSLContext {
+  private func getServerSSLContext(serverProtocolDetector: HTTPVersionDetectorHandler) -> NIOSSLContext {
     let cert = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_cer.pem"
     let privateKey = "/Users/alex.vuong/Data/Learn/SwiftNIO/swift-nio-examples/connect-proxy/Sources/generated_privatekey.pem"
 
@@ -312,7 +373,13 @@ extension ConnectHandler {
       certificateChain: try! NIOSSLCertificate.fromPEMFile(cert).map { .certificate($0) },
       privateKey: .file(privateKey)
     )
-    configuration.applicationProtocols = ["http/1.1"]// NIOHTTP2SupportedALPNProtocols
+
+    if let negotiatedProtocol = serverProtocolDetector.negotiatedProtocol {
+      configuration.applicationProtocols = [negotiatedProtocol]
+      print("Find out server using this protocol: ", negotiatedProtocol)
+    } else {
+      configuration.applicationProtocols = applicationProtocols
+    }
 
     let serverSSLContext = try! NIOSSLContext(configuration: configuration)
     return serverSSLContext

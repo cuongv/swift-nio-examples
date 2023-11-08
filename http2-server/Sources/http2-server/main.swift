@@ -117,6 +117,24 @@ final class HTTP1TestServer: ChannelInboundHandler {
   }
 }
 
+final class HTTPVersionDetectorHandler: ChannelInboundHandler {
+  typealias InboundIn = ByteBuffer
+
+  func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+    print("userInboundEventTriggered: ", event)
+//    if self.bytesSeen == 0 {
+//      if case let event = event as? TLSUserEvent, event == .shutdownCompleted || event == .handshakeCompleted(negotiatedProtocol: nil) {
+//        print("Server is using http1.1")
+////        context.fireErrorCaught(Error.serverDoesNotSpeakHTTP2)
+//        return
+//      }
+//    }
+//    print("Server is using http2.0")
+    context.fireUserInboundEventTriggered(event)
+  }
+
+}
+
 
 final class ErrorHandler: ChannelInboundHandler, Sendable {
   typealias InboundIn = Never
@@ -206,21 +224,29 @@ let bootstrap = ServerBootstrap(group: group)
     // First, we need an SSL handler because HTTP/2 is almost always spoken over TLS.
     channel.pipeline.addHandlers([
       NIOSSLServerHandler(context: sslContext),
-//      SniperHandler()
-    ]).flatMap {
+      HTTPVersionDetectorHandler(),
+      //      SniperHandler()
+    ])
+    .flatMap {
       // Right after the SSL handler, we can configure the HTTP/2 pipeline.
       channel.configureHTTP2Pipeline(mode: .server) { (streamChannel) -> EventLoopFuture<Void> in
         // For every HTTP/2 stream that the client opens, we put in the `HTTP2ToHTTP1ServerCodec` which
         // transforms the HTTP/2 frames to the HTTP/1 messages from the `NIOHTTP1` module.
-        streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-          // And lastly, we put in our very basic HTTP server :).
-          print("Pipeline: ", streamChannel.pipeline)
-          return streamChannel.pipeline.addHandler(HTTP1TestServer())
-        }.flatMap { () -> EventLoopFuture<Void> in
-          streamChannel.pipeline.addHandler(ErrorHandler())
-        }
+        return streamChannel.pipeline.addHandlers([
+          HTTP2FramePayloadToHTTP1ServerCodec(),
+          HTTP1TestServer(),
+        ])
+//          .flatMap { () -> EventLoopFuture<Void> in
+//            // And lastly, we put in our very basic HTTP server :).
+//            print("Pipeline: ", streamChannel.pipeline)
+//            return streamChannel.pipeline.addHandler(HTTP1TestServer())
+//          }
+          .flatMap { () -> EventLoopFuture<Void> in
+            streamChannel.pipeline.addHandler(ErrorHandler())
+          }
       }
-    }.flatMap { (_: HTTP2StreamMultiplexer) in
+    }
+    .flatMap { (_: HTTP2StreamMultiplexer) in
       return channel.pipeline.addHandler(ErrorHandler())
     }
   }
@@ -246,9 +272,6 @@ let channel = try { () -> Channel in
 }()
 
 print("Server started and listening on \(channel.localAddress!), htdocs path \(htdocs)")
-print("\nTry it out by running")
-print("    # WARNING: We're passing --insecure here because we don't have a real cert/private key!")
-print("    # In production NEVER use --insecure.")
 switch bindTarget {
 case .ip(let host, let port):
   let hostFormatted: String
