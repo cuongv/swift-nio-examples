@@ -402,7 +402,9 @@ public class X509Certificate {
     hints.ai_family = AF_UNSPEC; // use IPv4 or IPv6, whichever
     hints.ai_socktype = SOCK_STREAM;
     // Better way is using getaddrinfo to get ip address
-    getaddrinfo("google.com", "443", &hints, &res2)
+//    getaddrinfo("127.0.0.1", "9090", &hints, &res2)
+//    getaddrinfo("google.com", "443", &hints, &res2)
+    getaddrinfo("p.stg-myteksi.com", "443", &hints, &res2)
 
     /*
     // Old way to connect with IP adress
@@ -461,14 +463,84 @@ public class X509Certificate {
       print("ALPN negotiation failed\n");
     }
 
+//    if let cert_chain = SSL_get_peer_cert_chain(ssl) {
+//        let num_certs = sk_X509_num(cert_chain)
+//
+//        for i in 0..<num_certs {
+//            let cert = sk_X509_value(cert_chain, i)
+//            // `cert` is now an UnsafeMutablePointer<X509> pointing to the certificate
+//
+//            // You can now use the cert as needed, e.g., printing its subject
+//            if let subject = X509_get_subject_name(cert) {
+//                // Convert the subject to a human-readable format...
+//            }
+//            // Note: Do NOT free the X509 object, it is managed by OpenSSL
+//        }
+//    }
+
+    if let serverCert = SSL_get0_peer_certificate(ssl) {
+      defer {
+        X509_free(serverCert) // Free the certificate when done
+      }
+
+      //NID_issuer_alt_name
+      //NID_subject_alt_name
+      var commonName = [Int8](repeating: 0, count: 512)
+      X509_NAME_get_text_by_NID(X509_get_subject_name(serverCert), NID_commonName, &commonName, 512)
+
+      var issuerName = [Int8](repeating: 0, count: 512)
+      X509_NAME_get_text_by_NID(X509_get_issuer_name(serverCert), NID_issuer_alt_name, &issuerName, 512)
+
+      let commonNameString = String(cString: commonName)
+      print("Common Name: \(commonNameString)")
+
+      print(getExpirationDateFromCertificate(certificate: serverCert))
+
+      // You can also check the certificate's issuer, expiration date, etc.
+      // ...
+
+    } else {
+      print("No server certificate was presented.")
+    }
+
     // close connection
     close(sockfd)
+    res2?.deallocate()
 
     // Cleanup and finalize OpenSSL
     SSL_free(ssl);
     SSL_CTX_free(ssl_ctx);
     //    ERR_free_strings();
     //    EVP_cleanup();
+  }
+
+  func getExpirationDateFromCertificate(certificate: X509) -> Date? {
+    //X509_get0_notBefore
+      guard let notAfter = X509_get0_notAfter(certificate) else {
+          return nil
+      }
+
+      var b: UnsafeMutablePointer<UInt8>? = nil
+      let length = ASN1_STRING_to_UTF8(&b, notAfter)
+      if length < 0 {
+          return nil // ASN1_STRING_to_UTF8 failed
+      }
+
+      guard let utf8Str = b else { return nil }
+      let data = Data(bytes: utf8Str, count: Int(length))
+      let string = String(data: data, encoding: .utf8)
+
+    b?.deallocate()
+
+      let dateFormatter = DateFormatter()
+      dateFormatter.dateFormat = "yyyyMMddHHmmssZ" // adjust format depending on your ASN1_TIME format
+      dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+
+      if let dateString = string, let date = dateFormatter.date(from: dateString) {
+          return date
+      }
+
+      return nil
   }
 
 

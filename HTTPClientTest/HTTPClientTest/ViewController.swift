@@ -32,7 +32,7 @@ class ViewController: NSViewController {
     }
     .resume()
 
-    fetchServerCertificate(forHost: "p.stg-myteksi.com:443", port: 443)
+    fetchServerCertificate(forHost: "google.com", port: 443)
   }
 
   func fetchServerCertificate(forHost host: String, port: Int) {
